@@ -26,7 +26,7 @@ import numpy as np
 # ============================================================
 # 【读取数据】
 # CSV格式: rw,bs,iops,bw_KBps,lat_us
-df_bs = pd.read_csv("task2_bs.csv")
+df_bs = pd.read_csv("task2_bs_win.csv")
 
 # 为了让X轴按大小正确排序，给bs值赋一个数字顺序
 bs_order = ["4k", "16k", "64k", "256k", "1m"]
