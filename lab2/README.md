@@ -113,6 +113,14 @@ python3 plot_task3.py
 bash run_all.sh
 ```
 
+说明：脚本会在每组实验前执行 `sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches'` 清理 Page Cache，以减少缓存干扰并让不同参数结果更可比。因此运行时会提示输入 `sudo` 密码（即当前 Linux 用户登录密码），这是正常现象。
+
+如果当前环境不方便使用 `sudo`，可以临时跳过清缓存（结果可重复性会变差）：
+
+```bash
+SKIP_DROP_CACHES=1 bash run_all.sh
+```
+
 `run_all.sh` 默认已经是完整测试参数：
 
 - `TASK1_BLOOM_NUM_KEYS=32000000`
