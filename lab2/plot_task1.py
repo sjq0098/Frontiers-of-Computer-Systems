@@ -48,9 +48,9 @@ def plot_bloom_qps(df: pd.DataFrame, output_name: str) -> None:
 
     fig, ax = plt.subplots(figsize=(8, 5))
     bars = ax.bar(labels, df["rand_read_qps"], color=["#4C72B0", "#55A868"])
-    ax.set_title("Task1 Bloom Filter vs Random Read QPS")
+    ax.set_title("Task1 Bloom Filter vs Negative Lookup QPS")
     ax.set_xlabel("Bloom Filter")
-    ax.set_ylabel("Random Read QPS")
+    ax.set_ylabel("Negative Lookup QPS")
     ax.grid(axis="y", linestyle="--", alpha=0.3)
 
     for bar in bars:

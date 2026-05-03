@@ -2,6 +2,7 @@
 set -e
 
 TASK2_NUM_KEYS="${TASK2_NUM_KEYS:-32000000}"
+TASK1_BLOOM_NUM_KEYS="${TASK1_BLOOM_NUM_KEYS:-32000000}"
 TASK3_NUM_KEYS="${TASK3_NUM_KEYS:-2000000}"
 TASK3_NUM_OPS="${TASK3_NUM_OPS:-500000}"
 TASK3_NUM_SCANS="${TASK3_NUM_SCANS:-10000}"
@@ -9,15 +10,10 @@ SKIP_DROP_CACHES="${SKIP_DROP_CACHES:-0}"
 
 drop_caches() {
     if [ "$SKIP_DROP_CACHES" = "1" ]; then
-        echo "  >> 跳过清理 Page Cache"
         return
     fi
 
-    if command -v sudo >/dev/null 2>&1; then
-        sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches'
-    else
-        echo "  >> 未找到 sudo，跳过清理 Page Cache"
-    fi
+    sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches'
 }
 
 echo "===== 编译 ====="
@@ -45,7 +41,7 @@ done
 for val in 0 10; do
     echo "  >> bloom_filter = ${val} bits"
     drop_caches
-    ./task1 --param bloom_filter --value "$val"
+    ./task1 --param bloom_filter --value "$val" --num_keys "$TASK1_BLOOM_NUM_KEYS"
 done
 
 echo ""

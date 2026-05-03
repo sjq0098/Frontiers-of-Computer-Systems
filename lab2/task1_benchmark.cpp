@@ -30,7 +30,7 @@ struct Task1Result {
 void PrintUsage() {
     std::cerr
         << "Usage: ./task1 --param <write_buffer_size|block_size|bloom_filter> "
-        << "--value <value>\n";
+        << "--value <value> [--num_keys <N>]\n";
 }
 
 bool IsAllowedValue(const std::string& param, int value) {
@@ -43,13 +43,15 @@ bool IsAllowedValue(const std::string& param, int value) {
     return false;
 }
 
-bool ParseArgs(int argc, char* argv[], std::string* param, int* value) {
+bool ParseArgs(int argc, char* argv[], std::string* param, int* value, int* num_keys) {
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
         if (arg == "--param" && i + 1 < argc) {
             *param = argv[++i];
         } else if (arg == "--value" && i + 1 < argc) {
             *value = std::stoi(argv[++i]);
+        } else if (arg == "--num_keys" && i + 1 < argc) {
+            *num_keys = std::stoi(argv[++i]);
         } else {
             return false;
         }
@@ -59,11 +61,12 @@ bool ParseArgs(int argc, char* argv[], std::string* param, int* value) {
         *param = "bloom_filter";
     }
 
-    return !param->empty() && IsAllowedValue(*param, *value);
+    return !param->empty() && IsAllowedValue(*param, *value) && *num_keys > 0;
 }
 
-std::string BuildDbPath(const std::string& param, int value) {
-    return DB_BASE_PATH + "/task1_" + param + "_" + std::to_string(value);
+std::string BuildDbPath(const std::string& param, int value, int num_keys) {
+    return DB_BASE_PATH + "/task1_" + param + "_" + std::to_string(value) + "_" +
+           std::to_string(num_keys);
 }
 
 std::string CsvPathForParam(const std::string& param) {
@@ -107,9 +110,9 @@ leveldb::DB* OpenDbOrExit(const std::string& db_path, const leveldb::Options& op
     return db;
 }
 
-std::vector<int> BuildRandomKeys() {
-    std::vector<int> keys(NUM_KEYS);
-    std::iota(keys.begin(), keys.end(), 1);
+std::vector<int> BuildRandomKeys(int count, int first_key = 1) {
+    std::vector<int> keys(count);
+    std::iota(keys.begin(), keys.end(), first_key);
     std::mt19937 gen(std::random_device{}());
     std::shuffle(keys.begin(), keys.end(), gen);
     return keys;
@@ -142,20 +145,29 @@ Metrics RunWriteTest(leveldb::DB* db,
     return metrics;
 }
 
-Metrics RunReadTest(leveldb::DB* db, const std::vector<int>& keys) {
+Metrics RunReadTest(leveldb::DB* db,
+                    const std::vector<int>& keys,
+                    bool expect_found,
+                    const std::string& label) {
     leveldb::ReadOptions read_options;
     std::string value;
     Timer timer;
 
     for (size_t i = 0; i < keys.size(); ++i) {
         leveldb::Status status = db->Get(read_options, FormatKey(keys[i]), &value);
-        if (!status.ok()) {
-            std::cerr << "random_read Get failed at key " << keys[i] << ": "
+        if (expect_found) {
+            if (!status.ok()) {
+                std::cerr << label << " Get failed at key " << keys[i] << ": "
+                          << status.ToString() << "\n";
+                std::exit(1);
+            }
+        } else if (!status.IsNotFound()) {
+            std::cerr << label << " expected missing key " << keys[i] << ": "
                       << status.ToString() << "\n";
             std::exit(1);
         }
         if ((i + 1) % 500000 == 0) {
-            std::cout << "  [random_read] progress: " << (i + 1) << "/" << keys.size()
+            std::cout << "  [" << label << "] progress: " << (i + 1) << "/" << keys.size()
                       << "\n";
         }
     }
@@ -190,13 +202,14 @@ leveldb::Options BuildOptions(const std::string& param,
 Task1Result RunFullBenchmark(const std::string& db_path,
                              const leveldb::Options& options,
                              const std::string& value,
-                             const std::vector<int>& random_keys) {
+                             const std::vector<int>& random_keys,
+                             int num_keys) {
     Task1Result result;
 
     std::cout << "[1/3] sequential write\n";
     DestroyDbOrExit(db_path, options);
     leveldb::DB* db = OpenDbOrExit(db_path, options);
-    std::vector<int> sequential_keys(NUM_KEYS);
+    std::vector<int> sequential_keys(num_keys);
     std::iota(sequential_keys.begin(), sequential_keys.end(), 1);
     result.seq_write = RunWriteTest(db, sequential_keys, value, "sequential_write");
     delete db;
@@ -207,7 +220,7 @@ Task1Result RunFullBenchmark(const std::string& db_path,
     result.rand_write = RunWriteTest(db, random_keys, value, "random_write");
 
     std::cout << "[3/3] random read\n";
-    result.rand_read = RunReadTest(db, random_keys);
+    result.rand_read = RunReadTest(db, random_keys, true, "random_read");
     delete db;
 
     return result;
@@ -216,14 +229,19 @@ Task1Result RunFullBenchmark(const std::string& db_path,
 Metrics RunBloomReadBenchmark(const std::string& db_path,
                               const leveldb::Options& options,
                               const std::string& value,
-                              const std::vector<int>& random_keys) {
+                              const std::vector<int>& random_keys,
+                              int num_keys) {
+    const std::vector<int> missing_keys = BuildRandomKeys(num_keys, num_keys + 1);
+
     std::cout << "[bloom] preload random write dataset\n";
     DestroyDbOrExit(db_path, options);
     leveldb::DB* db = OpenDbOrExit(db_path, options);
     RunWriteTest(db, random_keys, value, "bloom_preload");
+    delete db;
 
-    std::cout << "[bloom] random read benchmark\n";
-    Metrics metrics = RunReadTest(db, random_keys);
+    db = OpenDbOrExit(db_path, options);
+    std::cout << "[bloom] negative random read benchmark\n";
+    Metrics metrics = RunReadTest(db, missing_keys, false, "bloom_negative_read");
     delete db;
     return metrics;
 }
@@ -262,7 +280,7 @@ void PrintFullResult(const std::string& param, int value, const Task1Result& res
 void PrintBloomResult(int value, const Metrics& rand_read) {
     std::cout << std::fixed << std::setprecision(2);
     std::cout << "\n=== Task1 Result (bloom_filter=" << value << ") ===\n";
-    std::cout << "Random read: QPS=" << rand_read.qps
+    std::cout << "Negative random read: QPS=" << rand_read.qps
               << ", avg_us=" << rand_read.avg_us << "\n";
 }
 
@@ -271,7 +289,8 @@ void PrintBloomResult(int value, const Metrics& rand_read) {
 int main(int argc, char* argv[]) {
     std::string param;
     int value = -1;
-    if (!ParseArgs(argc, argv, &param, &value)) {
+    int num_keys = NUM_KEYS;
+    if (!ParseArgs(argc, argv, &param, &value, &num_keys)) {
         PrintUsage();
         return 1;
     }
@@ -280,19 +299,21 @@ int main(int argc, char* argv[]) {
     std::filesystem::create_directories("results");
     std::filesystem::create_directories("figures");
 
-    const std::string db_path = BuildDbPath(param, value);
+    const std::string db_path = BuildDbPath(param, value, num_keys);
     const std::string value_1kb(VALUE_SIZE, 'x');
-    const std::vector<int> random_keys = BuildRandomKeys();
+    const std::vector<int> random_keys = BuildRandomKeys(num_keys);
 
     std::unique_ptr<const leveldb::FilterPolicy> filter_policy;
     leveldb::Options options = BuildOptions(param, value, &filter_policy);
 
     if (param == "bloom_filter") {
-        Metrics rand_read = RunBloomReadBenchmark(db_path, options, value_1kb, random_keys);
+        Metrics rand_read =
+            RunBloomReadBenchmark(db_path, options, value_1kb, random_keys, num_keys);
         AppendBloomCsvRow(value, rand_read);
         PrintBloomResult(value, rand_read);
     } else {
-        Task1Result result = RunFullBenchmark(db_path, options, value_1kb, random_keys);
+        Task1Result result =
+            RunFullBenchmark(db_path, options, value_1kb, random_keys, num_keys);
         AppendCsvRow(param, value, result);
         PrintFullResult(param, value, result);
     }

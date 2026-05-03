@@ -35,9 +35,12 @@ make lru_cache_test
 ```bash
 ./task1 --param write_buffer_size --value 4
 ./task1 --param block_size --value 16
-./task1 --param bloom_filter --value 10
+./task1 --param bloom_filter --value 0 --num_keys 32000000
+./task1 --param bloom_filter --value 10 --num_keys 32000000
 python3 plot_task1.py
 ```
+
+其中 `bloom_filter` 场景测的是随机负查询：先写入已有数据，再重新打开数据库，随机读取一批不存在的 key，用来观察 Bloom Filter 对 negative lookup 的加速效果。`task1` 支持额外的 `--num_keys` 参数，默认值是 `2000000`；如果希望 Bloom 实验单独使用约 `32GB` 数据，可传 `--num_keys 32000000`。
 
 输出：
 
@@ -112,6 +115,7 @@ bash run_all.sh
 
 `run_all.sh` 默认已经是完整测试参数：
 
+- `TASK1_BLOOM_NUM_KEYS=32000000`
 - `TASK2_NUM_KEYS=32000000`
 - `TASK3_NUM_KEYS=2000000`
 - `TASK3_NUM_OPS=500000`
@@ -120,6 +124,7 @@ bash run_all.sh
 如果你想覆盖默认值，再在命令前临时传环境变量：
 
 ```bash
+TASK1_BLOOM_NUM_KEYS=32000000 \
 TASK2_NUM_KEYS=32000000 \
 TASK3_NUM_KEYS=2000000 \
 TASK3_NUM_OPS=500000 \

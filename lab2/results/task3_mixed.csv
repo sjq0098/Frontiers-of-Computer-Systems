@@ -1,0 +1,3 @@
+mode,qps,avg_latency_us,cache_hit_rate
+block_cache,597280.33,1.67,N/A
+kv_cache,489556.35,2.04,0.8522

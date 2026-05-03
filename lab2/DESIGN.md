@@ -174,13 +174,15 @@ const std::string DB_BASE_PATH = "/tmp/leveldb_homework";
 
 #### 命令行接口
 ```bash
-./task1 --param <param_name> --value <param_value>
+./task1 --param <param_name> --value <param_value> [--num_keys <N>]
 ```
 - `--param` 可选值：`write_buffer_size` | `block_size` | `bloom_filter`
 - `--value` 含义：
   - write_buffer_size: 4 / 16 / 64（单位 MB）
   - block_size: 4 / 16 / 64（单位 KB）
   - bloom_filter: 0（关闭）/ 10（开启，10 bits/key）
+- `--num_keys` 默认值：`2000000`
+- 建议：`write_buffer_size` / `block_size` 保持默认值；`bloom_filter` 为了放大效果，可单独设为 `32000000`（约 32GB 数据）
 
 #### 程序流程
 ```
@@ -204,7 +206,12 @@ const std::string DB_BASE_PATH = "/tmp/leveldb_homework";
    - 打乱顺序，取前 N 个 key 做 Get
    - 记录总耗时，算 QPS
 
-9. 输出结果到终端 + 追加到 CSV 文件
+9. 如果当前参数是 `bloom_filter`，则随机读场景改为：
+   - 写入完成后先关闭数据库，再重新打开
+   - 随机查询一批**不存在**的 Key（例如 `num_keys+1 .. 2*num_keys`）
+   - 记录负查询的总耗时，算 QPS
+
+10. 输出结果到终端 + 追加到 CSV 文件
 ```
 
 #### CSV 输出格式
@@ -236,7 +243,8 @@ bloom_bits,rand_read_qps,rand_read_avg_us
 - 每次测试前必须删除旧的数据库目录（`leveldb::DestroyDB(path, options)` 或 `rm -rf`），否则旧数据影响结果
 - 随机读测试应该在已有数据的库上跑（先随机写灌数据，再随机读）
 - CSV 用追加模式写入，方便多次运行不同参数值时逐行追加
-- 布隆过滤器只需要测随机读，因为它只影响读取性能
+- 布隆过滤器实验不要复用“命中查询”的随机读场景，应单独测**不存在 key 的随机负查询**
+- 为了减少写后热缓存的干扰，布隆过滤器读测试前应先关闭并重新打开数据库
 
 ---
 

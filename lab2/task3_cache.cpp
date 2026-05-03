@@ -125,6 +125,16 @@ RuntimeContext BuildRuntime(const Config& config) {
     return runtime;
 }
 
+std::string FormatHitRate(const LRUCache* kv_cache) {
+    if (kv_cache == nullptr) {
+        return "N/A";
+    }
+
+    std::ostringstream out;
+    out << std::fixed << std::setprecision(4) << kv_cache->HitRate();
+    return out.str();
+}
+
 void LoadDataset(leveldb::DB* db, int num_keys, const std::string& value) {
     leveldb::WriteOptions write_options;
     std::cout << "load dataset: " << num_keys << " keys\n";
@@ -140,13 +150,13 @@ void LoadDataset(leveldb::DB* db, int num_keys, const std::string& value) {
     }
 }
 
-bool ReadWithOptionalKvCache(leveldb::DB* db,
+void ReadWithOptionalKvCache(leveldb::DB* db,
                              const leveldb::ReadOptions& read_options,
                              LRUCache* kv_cache,
                              const std::string& key,
                              std::string* value_out) {
     if (kv_cache != nullptr && kv_cache->Get(key, value_out)) {
-        return true;
+        return;
     }
 
     const leveldb::Status status = db->Get(read_options, key, value_out);
@@ -158,7 +168,6 @@ bool ReadWithOptionalKvCache(leveldb::DB* db,
     if (kv_cache != nullptr) {
         kv_cache->Put(key, *value_out);
     }
-    return false;
 }
 
 ResultRow RunPointGet(leveldb::DB* db, const Config& config, RuntimeContext* runtime) {
@@ -181,11 +190,7 @@ ResultRow RunPointGet(leveldb::DB* db, const Config& config, RuntimeContext* run
     const double elapsed = timer.ElapsedSeconds();
     row.qps = static_cast<double>(config.num_ops) / elapsed;
     row.avg_latency_us = elapsed * 1e6 / static_cast<double>(config.num_ops);
-    if (runtime->kv_cache != nullptr) {
-        std::ostringstream oss;
-        oss << std::fixed << std::setprecision(4) << runtime->kv_cache->HitRate();
-        row.cache_hit_rate = oss.str();
-    }
+    row.cache_hit_rate = FormatHitRate(runtime->kv_cache.get());
     return row;
 }
 
@@ -235,11 +240,7 @@ ResultRow RunRangeScan(leveldb::DB* db, const Config& config, RuntimeContext* ru
     const double elapsed = timer.ElapsedSeconds();
     row.qps = static_cast<double>(config.num_scans) / elapsed;
     row.avg_latency_us = elapsed * 1e6 / static_cast<double>(config.num_scans);
-    if (runtime->kv_cache != nullptr) {
-        std::ostringstream oss;
-        oss << std::fixed << std::setprecision(4) << runtime->kv_cache->HitRate();
-        row.cache_hit_rate = oss.str();
-    }
+    row.cache_hit_rate = FormatHitRate(runtime->kv_cache.get());
     return row;
 }
 
@@ -277,11 +278,7 @@ ResultRow RunMixed(leveldb::DB* db, const Config& config, RuntimeContext* runtim
     const double elapsed = timer.ElapsedSeconds();
     row.qps = static_cast<double>(config.num_ops) / elapsed;
     row.avg_latency_us = elapsed * 1e6 / static_cast<double>(config.num_ops);
-    if (runtime->kv_cache != nullptr) {
-        std::ostringstream oss;
-        oss << std::fixed << std::setprecision(4) << runtime->kv_cache->HitRate();
-        row.cache_hit_rate = oss.str();
-    }
+    row.cache_hit_rate = FormatHitRate(runtime->kv_cache.get());
     return row;
 }
 
